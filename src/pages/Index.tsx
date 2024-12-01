@@ -5,33 +5,86 @@ import { TicketCard } from "@/components/TicketCard";
 import { TicketForm } from "@/components/TicketForm";
 import { Ticket, TicketStatus } from "@/types/ticket";
 import { toast } from "sonner";
+import { supabase } from "@/lib/supabase";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 
 const Index = () => {
-  const [tickets, setTickets] = useState<Ticket[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<TicketStatus | "all">("all");
+  const queryClient = useQueryClient();
+
+  const { data: tickets = [], isLoading } = useQuery({
+    queryKey: ['tickets'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('tickets')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (error) throw error;
+      return data as Ticket[];
+    }
+  });
+
+  const createTicketMutation = useMutation({
+    mutationFn: async (newTicket: Omit<Ticket, "id" | "createdAt">) => {
+      const { data, error } = await supabase
+        .from('tickets')
+        .insert([{
+          title: newTicket.title,
+          description: newTicket.description,
+          status: newTicket.status,
+        }])
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      toast.success("Ticket created successfully!");
+    },
+    onError: (error) => {
+      toast.error("Failed to create ticket: " + error.message);
+    }
+  });
+
+  const updateTicketStatusMutation = useMutation({
+    mutationFn: async ({ ticketId, newStatus }: { ticketId: string; newStatus: TicketStatus }) => {
+      const { data, error } = await supabase
+        .from('tickets')
+        .update({ status: newStatus })
+        .eq('id', ticketId)
+        .select()
+        .single();
+      
+      if (error) throw error;
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['tickets'] });
+      toast.success("Ticket status updated!");
+    },
+    onError: (error) => {
+      toast.error("Failed to update ticket: " + error.message);
+    }
+  });
 
   const handleCreateTicket = (newTicket: Omit<Ticket, "id" | "createdAt">) => {
-    const ticket: Ticket = {
-      ...newTicket,
-      id: Math.random().toString(36).substr(2, 9),
-      createdAt: new Date().toISOString(),
-    };
-    setTickets((prev) => [ticket, ...prev]);
-    toast.success("Ticket created successfully!");
+    createTicketMutation.mutate(newTicket);
   };
 
   const handleStatusChange = (ticketId: string, newStatus: TicketStatus) => {
-    setTickets((prev) =>
-      prev.map((ticket) =>
-        ticket.id === ticketId ? { ...ticket, status: newStatus } : ticket
-      )
-    );
-    toast.success("Ticket status updated!");
+    updateTicketStatusMutation.mutate({ ticketId, newStatus });
   };
 
   const filteredTickets = tickets.filter(
     (ticket) => selectedStatus === "all" || ticket.status === selectedStatus
   );
+
+  if (isLoading) {
+    return <div className="container mx-auto py-8 text-center">Loading tickets...</div>;
+  }
 
   return (
     <div className="container mx-auto py-8">
