@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { TicketCard } from "@/components/TicketCard";
@@ -7,10 +7,22 @@ import { Ticket, TicketStatus } from "@/types/ticket";
 import { toast } from "sonner";
 import { supabase } from "@/lib/supabase";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useNavigate } from "react-router-dom";
 
 const Index = () => {
   const [selectedStatus, setSelectedStatus] = useState<TicketStatus | "all">("all");
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!session) {
+        navigate('/login', { replace: true });
+      }
+    });
+
+    return () => subscription.unsubscribe();
+  }, [navigate]);
 
   const { data: tickets = [], isLoading } = useQuery({
     queryKey: ['tickets'],
@@ -90,17 +102,28 @@ const Index = () => {
     <div className="container mx-auto py-8">
       <div className="flex justify-between items-center mb-8">
         <h1 className="text-3xl font-bold text-primary">Ticket Dashboard</h1>
-        <Dialog>
-          <DialogTrigger asChild>
-            <Button>New Ticket</Button>
-          </DialogTrigger>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create New Ticket</DialogTitle>
-            </DialogHeader>
-            <TicketForm onSubmit={handleCreateTicket} />
-          </DialogContent>
-        </Dialog>
+        <div className="flex gap-4 items-center">
+          <Dialog>
+            <DialogTrigger asChild>
+              <Button>New Ticket</Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Create New Ticket</DialogTitle>
+              </DialogHeader>
+              <TicketForm onSubmit={handleCreateTicket} />
+            </DialogContent>
+          </Dialog>
+          <Button 
+            variant="outline" 
+            onClick={async () => {
+              await supabase.auth.signOut();
+              navigate('/login');
+            }}
+          >
+            Sign Out
+          </Button>
+        </div>
       </div>
 
       <div className="flex gap-2 mb-6">
